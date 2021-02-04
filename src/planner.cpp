@@ -120,6 +120,25 @@ void Planner::generate_simple_keep_lane(const nlohmann::json &telemetry)
     spline_keypts_y.push_back(coords[1]);
   }
 
+  // Shift car reference angle to 0 degrees for each pt
+  // TODO: extract as rotation func
+  for (size_t i{0}; i < spline_keypts_x.size(); ++i) {
+      const double x = spline_keypts_x.at(i);
+      const double y = spline_keypts_y.at(i);
+      const double sin_angle_diff = sin(0. - ref_yaw);
+      const double cos_angle_diff = cos(0. - ref_yaw);
+
+      spline_keypts_x[i] = x * cos_angle_diff - y * sin_angle_diff;
+      spline_keypts_x[i] = x * sin_angle_diff + y * sin_angle_diff;
+  }
+
+  tk::spline spline;
+  spline.set_points(spline_keypts_x, spline_keypts_y);
+
+  // Re-use previous path
+  std::copy(prev_path_x_.begin(), prev_path_x_.end(), trajectory_x_.begin());
+  std::copy(prev_path_y_.begin(), prev_path_y_.end(), trajectory_y_.begin());
+
   for (size_t i{0}; i < params_.trajectory_length_pts; ++i)
   {
     const double next_s = ego_.s + (i + 1) * dist_inc;
