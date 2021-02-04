@@ -24,7 +24,7 @@ int main() {
   vector<double> map_waypoints_dy;
 
   // Waypoint map to read from
-  string map_file_ = "../data/highway_map.csv";
+  string map_file_ = "data/highway_map.csv";
   // The max s value before wrapping around the track back to 0
   double max_s = 6945.554;
 
@@ -98,6 +98,16 @@ int main() {
            *   sequentially every .02 seconds
            */
 
+          double dist_inc = 0.3;
+          for(int i{0}; i < 50; ++i) {
+              const double next_s = car_s + (i+1) * dist_inc;
+              const double next_d = 6;
+
+              const auto map_coords =
+                  getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+              next_x_vals.push_back(map_coords[0]);
+              next_y_vals.push_back(map_coords[1]);
+          }
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
