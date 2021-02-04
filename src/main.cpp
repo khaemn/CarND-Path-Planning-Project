@@ -53,10 +53,11 @@ int main() {
     road_map.dy.push_back(d_y);
   }
 
-  const auto timestep{0.02};
-  const auto trajectory_length{50};
-  Planner    planner(road_map, timestep, trajectory_length);
-  planner.set_desired_speed_kmh(30.);
+  PlannerConstParams params;
+  // Default param values can be overwritten below.
+
+  Planner planner(road_map, params);
+  planner.set_desired_speed_kmh(58.);
 
   h.onMessage([&planner]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
@@ -94,28 +95,10 @@ int main() {
           // Sensor Fusion Data, a list of all other cars on the same side 
           //   of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];*/
+
           planner.process_telemetry(j[1]);
 
           json msgJson;
-
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
-
-          /**
-           * TODO: define a path made up of (x,y) points that the car will visit
-           *   sequentially every .02 seconds
-           */
-
-//          double dist_inc = 0.3;
-//          for(int i{0}; i < 50; ++i) {
-//              const double next_s = car_s + (i+1) * dist_inc;
-//              const double next_d = 6;
-
-//              const auto map_coords =
-//                  getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-//              next_x_vals.push_back(map_coords[0]);
-//              next_y_vals.push_back(map_coords[1]);
-//          }
 
           msgJson["next_x"] = planner.x_trajectory_points();
           msgJson["next_y"] = planner.y_trajectory_points();
