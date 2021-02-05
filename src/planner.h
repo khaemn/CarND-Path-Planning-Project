@@ -29,6 +29,7 @@ struct PlannerConstParams
   size_t num_lanes{3};
   double max_planning_s{30};
   double max_planning_d{lane_width_m * 2};
+  double comfort_longitudinal_accel{1.7};  // m per second squared
 
   double trajectory_time_sec() const
   {
@@ -47,7 +48,7 @@ struct Car
   double s;
   double d;
   double yaw;
-  double speed;
+  double speed_kmh;
 };
 
 class Planner
@@ -75,18 +76,22 @@ public:
   double desired_speed_kmh() const;
   double desired_speed_ms() const;
 
+  double dist_inc_at_const_speed(double speed_ms) const;
+  double dist_inc_delta_at_accel(double accel) const;
+
   void set_desired_speed_kmh(double desired_speed_kmh);
 
 private:
   void parse_ego(const nlohmann::json &telemetry);
   void parse_prev_path(const nlohmann::json &telemetry);
+  void update_allowed_speed(const nlohmann::json &telemetry);
   void update_current_lane();
   void choose_next_state();
   void generate_trajectory(const nlohmann::json &telemetry);
 
   // Trajectory generators
-  void generate_simple_keep_lane(const nlohmann::json &telemetry);
-  void generate_best_keep_lane(const nlohmann::json &telemetry);
+  void generate_simple_keep_lane();
+  void generate_best_keep_lane();
 
   // Utility
   void   clear_trajectory();
@@ -101,12 +106,11 @@ private:
   // According to requirements, the road map is immutable.
   const RoadMap      map_;
   PlannerConstParams params_;
-  double             desired_speed_kmh_{0.};
+  double             desired_speed_ms_{0.};
+  double             allowed_now_speed_ms_{0.};
 
-  //vector<double> prev_path_x_;
-  //vector<double> prev_path_y_;
-  double         end_path_d_{0.};
-  double         end_path_s_{0.};
+  double end_path_d_{0.};
+  double end_path_s_{0.};
 
   // 0 for the leftmost lane, params_.num_lanes - 1 for the rightmost
   int current_lane_{0};
