@@ -103,8 +103,8 @@ private:
   PlannerConstParams params_;
   double             desired_speed_kmh_{0.};
 
-  vector<double> prev_path_x_;
-  vector<double> prev_path_y_;
+  //vector<double> prev_path_x_;
+  //vector<double> prev_path_y_;
   double         end_path_d_{0.};
   double         end_path_s_{0.};
 

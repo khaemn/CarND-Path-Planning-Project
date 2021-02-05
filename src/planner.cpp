@@ -13,6 +13,8 @@ Planner::State Planner::state() const
 
 void Planner::process_telemetry(const nlohmann::json &telemetry)
 {
+  clear_trajectory();
+
   parse_ego(telemetry);
 
   parse_prev_path(telemetry);
@@ -50,8 +52,6 @@ void Planner::parse_ego(const nlohmann::json &telemetry)
 
 void Planner::parse_prev_path(const nlohmann::json &telemetry)
 {
-  clear_prev_path();
-
   // Previous path data given to the Planner
   auto previous_path_x = telemetry["previous_path_x"];
   auto previous_path_y = telemetry["previous_path_y"];
@@ -61,8 +61,11 @@ void Planner::parse_prev_path(const nlohmann::json &telemetry)
     std::cout << "Error: previous path x size " << previous_path_x.size()
               << " != previous path y size " << previous_path_y.size() << std::endl;
   }
-  std::copy(previous_path_x.begin(), previous_path_x.end(), prev_path_x_.begin());
-  std::copy(previous_path_y.begin(), previous_path_y.end(), prev_path_y_.begin());
+
+  for (size_t i{0}; i < previous_path_x.size(); ++i) {
+      trajectory_x_.push_back(previous_path_x[i]);
+      trajectory_y_.push_back(previous_path_y[i]);
+  }
 
   // Previous path's end s and d values
   end_path_s_ = telemetry["end_path_s"];
@@ -78,7 +81,6 @@ void Planner::generate_simple_keep_lane(const nlohmann::json &telemetry)
 {
   static constexpr double s_step_m = 30.;
   static constexpr size_t steps_ahead = 3;
-  clear_trajectory();
 
   const double dist_inc =
       (desired_speed_ms() * params_.trajectory_time_sec()) / params_.trajectory_length_pts;
@@ -88,17 +90,18 @@ void Planner::generate_simple_keep_lane(const nlohmann::json &telemetry)
   double ref_x(ego_.x), ref_y(ego_.y), prev_ref_x(ego_.x - cos(ego_.yaw)),
       prev_ref_y(ego_.y - sin(ego_.yaw)), ref_yaw(ego_.yaw);
 
-  const auto prev_path_len = prev_path_x_.size();
+  // Previous path is now stored in the trajectory array
+  const auto prev_path_len = trajectory_x_.size();
 
   // if there are at least 2 pts in the prev path, the reference position
   // for the path should be at the end of the previous one; otherwise,
   // the ref position would be calculated from the CCP.
   if (prev_path_len >= 2)
   {
-    ref_x      = prev_path_x_.at(prev_path_len - 1);
-    ref_y      = prev_path_y_.at(prev_path_len - 1);
-    prev_ref_x = prev_path_x_.at(prev_path_len - 2);
-    prev_ref_y = prev_path_y_.at(prev_path_len - 2);
+    ref_x      = trajectory_x_.at(prev_path_len - 1);
+    ref_y      = trajectory_y_.at(prev_path_len - 1);
+    prev_ref_x = trajectory_x_.at(prev_path_len - 2);
+    prev_ref_y = trajectory_y_.at(prev_path_len - 2);
     ref_yaw    = atan2(ref_y - prev_ref_y, ref_x - prev_ref_x);
   }
 
@@ -123,23 +126,19 @@ void Planner::generate_simple_keep_lane(const nlohmann::json &telemetry)
   // Shift car reference angle to 0 degrees for each pt
   // TODO: extract as rotation func
   for (size_t i{0}; i < spline_keypts_x.size(); ++i) {
-      const double x = spline_keypts_x.at(i);
-      const double y = spline_keypts_y.at(i);
+      const double x = spline_keypts_x.at(i) - ref_x;
+      const double y = spline_keypts_y.at(i) - ref_y;
       const double sin_angle_diff = sin(0. - ref_yaw);
       const double cos_angle_diff = cos(0. - ref_yaw);
 
       spline_keypts_x[i] = x * cos_angle_diff - y * sin_angle_diff;
-      spline_keypts_x[i] = x * sin_angle_diff + y * sin_angle_diff;
+      spline_keypts_y[i] = x * sin_angle_diff + y * cos_angle_diff;
   }
 
   tk::spline spline;
   spline.set_points(spline_keypts_x, spline_keypts_y);
 
-  // Re-use previous path
-  std::copy(prev_path_x_.begin(), prev_path_x_.end(), trajectory_x_.begin());
-  std::copy(prev_path_y_.begin(), prev_path_y_.end(), trajectory_y_.begin());
-
-  for (size_t i{0}; i < params_.trajectory_length_pts; ++i)
+  for (size_t i{prev_path_len}; i < params_.trajectory_length_pts; ++i)
   {
     const double next_s = ego_.s + (i + 1) * dist_inc;
     const double next_d = lane_center_d(current_lane_);
@@ -169,8 +168,8 @@ void Planner::clear_trajectory()
 
 void Planner::clear_prev_path()
 {
-  prev_path_x_.clear();
-  prev_path_y_.clear();
+//  prev_path_x_.clear();
+//  prev_path_y_.clear();
   end_path_d_ = ego_.d;
   end_path_s_ = ego_.s;
 }
@@ -193,7 +192,6 @@ void Planner::generate_trajectory(const nlohmann::json &telemetry)
     generate_best_keep_lane(telemetry);
     break;
   default:
-    clear_trajectory();
     break;
   }
 }
