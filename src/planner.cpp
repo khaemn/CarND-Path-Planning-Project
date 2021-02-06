@@ -52,8 +52,8 @@ void Planner::parse_ego(const nlohmann::json &telemetry)
   ego_.y         = telemetry["y"];
   ego_.s         = telemetry["s"];
   ego_.d         = telemetry["d"];
-  ego_.yaw       = telemetry["yaw"];
-  ego_.speed_kmh = telemetry["speed"];
+  ego_.yaw       = deg2rad(telemetry["yaw"]);
+  ego_.speed_ms = double(telemetry["speed"]) / 3.6;
 
   update_current_lane();
 }
@@ -117,28 +117,36 @@ void Planner::update_allowed_speed()
     return;
   }
   // Avoid collision
-  const RoadObject &closest_obstacle_ahead = *obstacles_ahead_.at(size_t(current_lane_)).begin();
-  std::cout << "Obst: " << closest_obstacle_ahead.id << " "
-            << closest_obstacle_ahead.distance_to_ccp << " s: " << closest_obstacle_ahead.s
-            << " d: " << closest_obstacle_ahead.d << " egos " << ego_.s << " egod " << ego_.d
+  const RoadObject &closest_ahead = *obstacles_ahead_.at(size_t(current_lane_)).begin();
+  std::cout << "Obst: " << closest_ahead.id << " "
+            << closest_ahead.distance_to_ccp << " s: " << closest_ahead.s
+            << " d: " << closest_ahead.d << " egos " << ego_.s << " egod " << ego_.d
             << std::endl;
 
-  if (closest_obstacle_ahead.distance_to_ccp < params_.min_gap_lon)
+  if (closest_ahead.distance_to_ccp < params_.min_gap_lon)
   {
     // Full brake if there is no safe gap ahead
     allowed_now_speed_ms_ = 0.;
     return;
   }
-  // TODO: not +- but MEASURE the obstacle's speed and then decide.
-  if (closest_obstacle_ahead.distance_to_ccp < params_.safe_gap_lon)
+
+  if (closest_ahead.distance_to_ccp > params_.safe_gap_lon)
   {
-    // Slow down if there's an obstacle ahead
-    allowed_now_speed_ms_ = std::max(0., allowed_now_speed_ms_ - .25);
+    // Speed up if the lane is free
+    allowed_now_speed_ms_ = desired_speed_ms_;
     return;
   }
-  // Speed up if the lane is free
-  allowed_now_speed_ms_ = std::min(desired_speed_ms_, allowed_now_speed_ms_ + 2.);
-  return;
+
+  // Slow down if there's an obstacle ahead at a safe distance
+  const auto obst_heading        = std::atan(closest_ahead.vy / closest_ahead.vx);
+  const auto full_obst_speed     = sqrt(pow(closest_ahead.vx, 2) + pow(closest_ahead.vy, 2));
+  const auto angle_diff          = obst_heading - ego_.yaw;
+  const auto obst_parallel_speed = cos(angle_diff) * full_obst_speed;
+  std::cout << "Closest speed to me " << obst_parallel_speed;
+
+  const auto coeff =
+      (closest_ahead.distance_to_ccp - params_.min_gap_lon) / (params_.safe_gap_lon * 0.9);
+  allowed_now_speed_ms_ = std::min(desired_speed_ms_, obst_parallel_speed * 0.98);
 }
 
 void Planner::update_current_lane()
@@ -259,7 +267,7 @@ void Planner::generate_best_keep_lane()
   // if there are at least 2 pts in the prev path, the reference position
   // for the path should be at the end of the previous one; otherwise,
   // the ref position would be calculated from the CCP.
-  double current_dist_inc = dist_inc_at_const_speed(ego_.speed_kmh / 3.6);
+  double current_dist_inc = dist_inc_at_const_speed(ego_.speed_ms);
   if (prev_path_len >= 2)
   {
     ref_x            = double(trajectory_x_.at(prev_path_len - 1));

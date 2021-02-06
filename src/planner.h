@@ -66,7 +66,7 @@ struct Car
   double s;
   double d;
   double yaw;
-  double speed_kmh;
+  double speed_ms;
 };
 
 class Planner
