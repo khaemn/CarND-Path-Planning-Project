@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <set>
 
 // for convenience
 using nlohmann::json;
@@ -30,7 +31,12 @@ struct PlannerConstParams
   double max_planning_s{30};
   double max_planning_d{lane_width_m * 2};
   double comfort_longitudinal_accel{1.7};  // m per second squared
-
+  double ego_length_m{5.0};
+  double ego_width_m{3.0};
+  double safe_gap_lon{3*ego_length_m};
+  double min_gap_lon{ego_length_m};
+  double safe_gap_lat{ego_width_m};
+  double min_gap_lat{0.5*ego_width_m};
   double trajectory_time_sec() const
   {
     return trajectory_length_pts * timestep_seconds;
@@ -39,7 +45,19 @@ struct PlannerConstParams
 
 struct RoadObject
 {
+  const int    id;
+  const double x;
+  const double y;
+  const double vx;
+  const double vy;
+  const double s;
+  const double d;
+  const double distance_to_ccp;
 };
+inline bool operator<(const RoadObject &l, const RoadObject &r)
+{
+  return l.distance_to_ccp < r.distance_to_ccp;
+}
 
 struct Car
 {
@@ -84,7 +102,8 @@ public:
 private:
   void parse_ego(const nlohmann::json &telemetry);
   void parse_prev_path(const nlohmann::json &telemetry);
-  void update_allowed_speed(const nlohmann::json &telemetry);
+  void parse_obstacles(const nlohmann::json &telemetry);
+  void update_allowed_speed();
   void update_current_lane();
   void choose_next_state();
   void generate_trajectory(const nlohmann::json &telemetry);
@@ -96,13 +115,17 @@ private:
   // Utility
   void   clear_trajectory();
   void   clear_prev_path();
+  void   clear_obstacles();
   double lane_center_d(int lane) const;
+  int lane_num_of(double d);
 
 private:
   State         state_{State::Invalid};
   vector<float> trajectory_x_;
   vector<float> trajectory_y_;
   Car           ego_;
+  vector<std::set<RoadObject>> obstacles_ahead_;
+  vector<std::set<RoadObject>> obstacles_behind_;
   // According to requirements, the road map is immutable.
   const RoadMap      map_;
   PlannerConstParams params_;
