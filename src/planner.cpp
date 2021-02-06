@@ -84,6 +84,7 @@ void Planner::parse_prev_path(const nlohmann::json &telemetry)
 void Planner::parse_obstacles(const nlohmann::json &telemetry)
 {
   auto sensor_fusion = telemetry["sensor_fusion"];
+  clear_obstacles();
   for (size_t i{0}; i < sensor_fusion.size(); ++i)
   {
     auto       obj = sensor_fusion[i];
@@ -108,27 +109,35 @@ void Planner::parse_obstacles(const nlohmann::json &telemetry)
 
 void Planner::update_allowed_speed()
 {
-  std::cout << "allowed_now_speed_ms_ " << allowed_now_speed_ms_ << std::endl;
+  std::cout << "allowed_now_speed_ms_ " << allowed_now_speed_ms_ << " lane " << current_lane_
+            << std::endl;
   if (obstacles_ahead_.at(size_t(current_lane_)).empty())
   {
     allowed_now_speed_ms_ = desired_speed_ms_;
+    return;
   }
   // Avoid collision
   const RoadObject &closest_obstacle_ahead = *obstacles_ahead_.at(size_t(current_lane_)).begin();
-  if (closest_obstacle_ahead.distance_to_ccp < params_.min_gap_lat)
+  std::cout << "Obst: " << closest_obstacle_ahead.id << " "
+            << closest_obstacle_ahead.distance_to_ccp << " s: " << closest_obstacle_ahead.s
+            << " d: " << closest_obstacle_ahead.d << " egos " << ego_.s << " egod " << ego_.d
+            << std::endl;
+
+  if (closest_obstacle_ahead.distance_to_ccp < params_.min_gap_lon)
   {
     // Full brake if there is no safe gap ahead
     allowed_now_speed_ms_ = 0.;
     return;
   }
-  if (closest_obstacle_ahead.distance_to_ccp < params_.safe_gap_lat)
+  // TODO: not +- but MEASURE the obstacle's speed and then decide.
+  if (closest_obstacle_ahead.distance_to_ccp < params_.safe_gap_lon)
   {
     // Slow down if there's an obstacle ahead
-    allowed_now_speed_ms_ = std::max(0., allowed_now_speed_ms_ - 1.0);
+    allowed_now_speed_ms_ = std::max(0., allowed_now_speed_ms_ - .25);
     return;
   }
   // Speed up if the lane is free
-  allowed_now_speed_ms_ = std::min(desired_speed_ms_, allowed_now_speed_ms_ + 1.0);
+  allowed_now_speed_ms_ = std::min(desired_speed_ms_, allowed_now_speed_ms_ + 2.);
   return;
 }
 
@@ -313,7 +322,8 @@ void Planner::generate_best_keep_lane()
     }
     else
     {
-      dist_inc_for_next_step = std::max(allowed_distance_inc, dist_inc_for_next_step - accel_step);
+      dist_inc_for_next_step =
+          std::max(allowed_distance_inc, dist_inc_for_next_step - 1.5 * accel_step);
     }
     const double next_x_car = prev_x_car + dist_inc_for_next_step;
     prev_x_car              = next_x_car;
@@ -359,7 +369,7 @@ double Planner::lane_center_d(int lane) const
 
 int Planner::lane_num_of(double d)
 {
-    return int(std::floor(ego_.d / params_.lane_width_m));
+    return int(std::floor(d / params_.lane_width_m));
 }
 
 void Planner::choose_next_state()
