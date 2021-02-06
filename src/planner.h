@@ -30,11 +30,11 @@ struct PlannerConstParams
   size_t num_lanes{3};
   double max_planning_s{30};
   double max_planning_d{lane_width_m * 2};
-  double comfort_longitudinal_accel{2.};  // m per second squared
+  double comfort_longitudinal_accel{2.5};  // m per second squared
   double ego_length_m{5.0};
   double ego_width_m{3.0};
-  double safe_gap_lon{10 * ego_length_m};
-  double min_gap_lon{2.0 * ego_length_m};
+  double safe_gap_lon{7 * ego_length_m};
+  double min_gap_lon{1.5 * ego_length_m};
   double safe_gap_lat{1.2 * ego_width_m};
   double min_gap_lat{ego_width_m};
   double trajectory_time_sec() const
@@ -110,7 +110,8 @@ private:
 
   // Trajectory generators
   void generate_simple_keep_lane();
-  void generate_best_keep_lane();
+  void generate_keep_lane();
+  int detect_optimal_lane();
 
   // Utility
   void   clear_trajectory();
@@ -137,4 +138,5 @@ private:
 
   // 0 for the leftmost lane, params_.num_lanes - 1 for the rightmost
   int current_lane_{0};
+  bool is_slowed_down_by_obstacle_ahead{false};
 };
