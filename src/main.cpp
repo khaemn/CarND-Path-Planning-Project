@@ -84,10 +84,7 @@ int main() {
       return;
     }
 
-    // Sensor Fusion Data, a list of all other cars on the same side
-    //   of the road.
-    /*auto sensor_fusion = j[1]["sensor_fusion"];*/
-
+    // This call performs all the job with trajectory planning.
     planner.process_telemetry(j[1]);
 
     json msgJson;

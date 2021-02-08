@@ -30,9 +30,9 @@ void Planner::process_telemetry(const nlohmann::json &telemetry)
 
   generate_trajectory();
 
-  std::cout << "Desired spd " << desired_speed_ms_ << ", allowed spd " << allowed_now_speed_ms_
-            << ", now in lane " << current_lane_ << ", spd " << ego_.speed_ms
-            << ", slowed: " << is_slowed_down_by_obstacle_ahead << std::endl;
+  //  std::cout << "Desired spd " << desired_speed_ms_ << ", allowed spd " << allowed_now_speed_ms_
+  //            << ", now in lane " << current_lane_ << ", spd " << ego_.speed_ms
+  //            << ", slowed: " << is_slowed_down_by_obstacle_ahead << std::endl;
 }
 
 const std::vector<float> &Planner::x_trajectory_points() const
@@ -91,7 +91,7 @@ void Planner::parse_obstacles(const nlohmann::json &telemetry)
     RoadObject obstacle{obj[0], obj[1], obj[2], obj[3],
                         obj[4], obj[5], obj[6], distance(ego_.x, ego_.y, obj[1], obj[2])};
     const auto its_lane = lane_num_of(obstacle.d);
-    if (its_lane < 0 || its_lane > int(params_.num_lanes))
+    if (its_lane < 0 || its_lane > int(params_.total_lanes))
     {
       // skip this obstacle, it is out of our road;
       continue;
@@ -137,13 +137,13 @@ void Planner::update_allowed_speed()
     closest_ahead =
         future_ahead.distance_to_ccp < current_ahead.distance_to_ccp ? future_ahead : current_ahead;
   }
-  // Avoid collision
 
   const auto obst_parallel_speed = obstacle_speed(closest_ahead);
 
-  std::cout << "Obst: " << closest_ahead.id << " dist " << closest_ahead.distance_to_ccp << " spd "
-            << obst_parallel_speed << std::endl;
+  //  std::cout << "Obst: " << closest_ahead.id << " dist " << closest_ahead.distance_to_ccp << "
+  //  spd " << obst_parallel_speed << std::endl;
 
+  // Avoid collision
   if (closest_ahead.distance_to_ccp < params_.min_gap_lon)
   {
     // Full brake if there is no safe gap ahead
@@ -339,8 +339,7 @@ int Planner::choose_best_lane()
       const auto &closest_behind   = *behinds.begin();
       const auto  car_behind_speed = obstacle_speed(closest_behind);
       const auto  gap_behind       = ego_.s - closest_behind.s;
-      std::cout << "L " << l << " gap_behind " << gap_behind << " desired gap beh "
-                << desired_behind_gap << " speed fctr " << speed_factor << std::endl;
+
       if ((gap_behind > desired_behind_gap) ||
           ((gap_behind > params_.min_gap_lon) && (car_behind_speed <= ego_.speed_ms)))
       {
@@ -375,7 +374,7 @@ int Planner::choose_best_lane()
   };
 
   const int leftmost_lane  = std::max(0, current_lane_ - 1);
-  const int rightmost_lane = std::min(int(params_.num_lanes - 1), current_lane_ + 1);
+  const int rightmost_lane = std::min(int(params_.total_lanes - 1), current_lane_ + 1);
   std::vector<std::pair<double, int>> lane_costs;
 
   for (int l{leftmost_lane}; l <= rightmost_lane; l++)
@@ -416,7 +415,7 @@ void Planner::clear_obstacles()
   obstacles_ahead_.clear();
   obstacles_behind_.clear();
 
-  for (size_t i{0}; i < params_.num_lanes; ++i)
+  for (size_t i{0}; i < params_.total_lanes; ++i)
   {
     obstacles_ahead_.push_back({});
     obstacles_behind_.push_back({});
@@ -441,11 +440,6 @@ double Planner::obstacle_speed(const RoadObject &object)
   // have shown that it is reliable enough.
   const auto full_obst_speed = sqrt(pow(object.vx, 2) + pow(object.vy, 2));
   return full_obst_speed;
-}
-
-double Planner::desired_speed_kmh() const
-{
-  return desired_speed_ms_ * 3.6;
 }
 
 double Planner::dist_inc_at_const_speed(double speed_ms) const
