@@ -22,7 +22,7 @@ struct RoadMap
   vector<double> dy;
 };
 
-struct PlannerConstParams
+struct PlannerParams
 {
   double timestep_seconds{0.02};
   size_t trajectory_length_pts{50};
@@ -82,7 +82,7 @@ public:
     Invalid
   };
 
-  explicit Planner(const RoadMap &map, const PlannerConstParams &params);
+  explicit Planner(const RoadMap &map, const PlannerParams &params);
 
   State state() const;
 
@@ -119,7 +119,7 @@ private:
   void   clear_obstacles();
   double lane_center_d(int lane) const;
   int lane_num_of(double d);
-  double obstacle_speed_along_my_heading(const RoadObject& object);
+  double obstacle_speed(const RoadObject& object);
 
 private:
   State         state_{State::Invalid};
@@ -130,7 +130,7 @@ private:
   vector<std::set<RoadObject>> obstacles_behind_;
   // According to requirements, the road map is immutable.
   const RoadMap      map_;
-  PlannerConstParams params_;
+  PlannerParams params_;
   double             desired_speed_ms_{0.};
   double             allowed_now_speed_ms_{0.};
 

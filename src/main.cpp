@@ -47,11 +47,11 @@ int main() {
     road_map.dy.push_back(d_y);
   }
 
-  PlannerConstParams params;
+  PlannerParams params;
   // Default param values can be overwritten below.
 
   Planner planner(road_map, params);
-  planner.set_desired_speed_kmh(79.);
+  planner.set_desired_speed_kmh(78.);
 
   h.onMessage([&planner]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
