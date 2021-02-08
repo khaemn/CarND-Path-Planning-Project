@@ -170,7 +170,7 @@ void Planner::generate_keep_lane()
   // Ensures safe stop before an obstacle, safe distance
   // to a moving obstacle ahead or a maximum allowed speed
   // on a free lane.
-  const double            s_step_m    = 40.;
+  const double            s_step_m    = allowed_now_speed_ms_ * 2.0;
   static constexpr size_t steps_ahead = 3;
 
   // We need (at least) 2 reference points in order to make the
@@ -372,8 +372,9 @@ int Planner::decide_best_lane()
 
   // As we change lane only expecting a better speed,
   // this flag is cleared for the next iteration.
-  if (current_lane_ != future_lane_) {
-      is_slowed_down_by_obstacle_ahead = false;
+  if (current_lane_ != future_lane_)
+  {
+    is_slowed_down_by_obstacle_ahead = false;
   }
 
   return future_lane_;
