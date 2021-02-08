@@ -45,14 +45,25 @@ struct PlannerParams
 
 struct RoadObject
 {
-  const int    id;
-  const double x;
-  const double y;
-  const double vx;
-  const double vy;
-  const double s;
-  const double d;
-  const double distance_to_ccp;
+    RoadObject() = default;
+  RoadObject(int id, double x, double y, double vx, double vy, double s, double d, double dist_ccp)
+    : id(id)
+    , x(x)
+    , y(y)
+    , vx(vx)
+    , vy(vy)
+    , s(s)
+    , d(d)
+    , distance_to_ccp(dist_ccp)
+  {}
+  int    id;
+  double x;
+  double y;
+  double vx;
+  double vy;
+  double s;
+  double d;
+  double distance_to_ccp;
 };
 inline bool operator<(const RoadObject &l, const RoadObject &r)
 {
@@ -106,11 +117,9 @@ private:
   void update_allowed_speed();
   void update_current_lane();
   void choose_next_state();
-  void generate_trajectory(const nlohmann::json &telemetry);
 
   // Trajectory generators
-  void generate_simple_keep_lane();
-  void generate_keep_lane();
+  void generate_trajectory();
   int decide_best_lane();
 
   // Utility

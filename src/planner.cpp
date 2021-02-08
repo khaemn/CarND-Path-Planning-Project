@@ -30,16 +30,11 @@ void Planner::process_telemetry(const nlohmann::json &telemetry)
   //   of the road.
   auto sensor_fusion = telemetry["sensor_fusion"];
 
-  choose_next_state();
-
-  generate_trajectory(telemetry);
+  generate_trajectory();
 
   std::cout << "Desired spd " << desired_speed_ms_ << ", allowed spd " << allowed_now_speed_ms_
-            << ", now in lane " << current_lane_ << ", slowed: " << is_slowed_down_by_obstacle_ahead
-            << std::endl;
-  //  std::cout << "Ego spd " << ego_.speed_ms << ", heading " << rad2deg(ego_.yaw) << ", s " <<
-  //  ego_.s
-  //            << ", d " << ego_.d << std::endl;
+            << ", now in lane " << current_lane_ << ", spd " << ego_.speed_ms
+            << ", slowed: " << is_slowed_down_by_obstacle_ahead << std::endl;
 }
 
 const std::vector<float> &Planner::x_trajectory_points() const
@@ -119,14 +114,34 @@ void Planner::update_allowed_speed()
   const auto DESIRED_AHEAD_GAP = params_.safe_gap_lon * 0.4;
 
   is_slowed_down_by_obstacle_ahead = false;
-  if (obstacles_ahead_.at(size_t(current_lane_)).empty())
+
+  const auto &future_aheads  = obstacles_ahead_.at(size_t(future_lane_));
+  const auto &current_aheads = obstacles_ahead_.at(size_t(current_lane_));
+  if (future_aheads.empty() && current_aheads.empty())
   {
     allowed_now_speed_ms_ = desired_speed_ms_;
     return;
   }
+
+  RoadObject closest_ahead;
+  if (future_aheads.empty())
+  {
+    closest_ahead = *current_aheads.begin();
+  }
+  else if (current_aheads.empty())
+  {
+    closest_ahead = *future_aheads.begin();
+  }
+  else
+  {
+    const auto &current_ahead = *current_aheads.begin();
+    const auto &future_ahead  = *future_aheads.begin();
+    closest_ahead =
+        future_ahead.distance_to_ccp < current_ahead.distance_to_ccp ? future_ahead : current_ahead;
+  }
   // Avoid collision
-  const RoadObject &closest_ahead       = *obstacles_ahead_.at(size_t(current_lane_)).begin();
-  const auto        obst_parallel_speed = obstacle_speed(closest_ahead);
+
+  const auto obst_parallel_speed = obstacle_speed(closest_ahead);
 
   std::cout << "Obst: " << closest_ahead.id << " dist " << closest_ahead.distance_to_ccp << " spd "
             << obst_parallel_speed << std::endl;
@@ -153,6 +168,12 @@ void Planner::update_allowed_speed()
     is_slowed_down_by_obstacle_ahead = true;
   }
 
+  if (closest_ahead.s < end_path_s_)
+  {
+    // Discard prev path if it collides
+    clear_prev_path();
+  }
+
   const auto coeff = ((closest_ahead.distance_to_ccp - params_.min_gap_lon) / DESIRED_AHEAD_GAP);
 
   allowed_now_speed_ms_ = std::min(
@@ -164,13 +185,13 @@ void Planner::update_current_lane()
   current_lane_ = lane_num_of(ego_.d);
 }
 
-void Planner::generate_keep_lane()
+void Planner::generate_trajectory()
 {
   // Generates the best possible keep lane trajectory.
   // Ensures safe stop before an obstacle, safe distance
   // to a moving obstacle ahead or a maximum allowed speed
   // on a free lane.
-  const double            s_step_m    = allowed_now_speed_ms_ * 2.0;
+  const double            s_step_m    = 30.;//std::max(10.0, ego_.speed_ms * 2.0);
   static constexpr size_t steps_ahead = 3;
 
   // We need (at least) 2 reference points in order to make the
@@ -427,20 +448,6 @@ double Planner::obstacle_speed(const RoadObject &object)
 void Planner::choose_next_state()
 {
   state_ = State::KeepLane;
-}
-
-void Planner::generate_trajectory(const nlohmann::json &telemetry)
-{
-  // Jerk and accel values according to
-  // https://repositories.lib.utexas.edu/bitstream/handle/2152/20856/cats_rr_40.pdf
-  switch (state_)
-  {
-  case State::KeepLane:
-    generate_keep_lane();
-    break;
-  default:
-    break;
-  }
 }
 
 double Planner::desired_speed_kmh() const
