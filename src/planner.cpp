@@ -109,7 +109,7 @@ void Planner::parse_obstacles(const nlohmann::json &telemetry)
 
 void Planner::update_allowed_speed()
 {
-  const auto DESIRED_AHEAD_GAP = params_.safe_gap_lon * 0.5;
+  const auto DESIRED_AHEAD_GAP = params_.safe_gap_lon * speed_factor();
 
   is_slowed_down_by_obstacle_ahead = false;
 
@@ -249,8 +249,8 @@ void Planner::generate_trajectory()
   double       dist_inc_for_next_step = current_dist_inc;
   const double sin_yaw                = sin(ref_yaw);
   const double cos_yaw                = cos(ref_yaw);
-  const double accel_step             = dist_inc_delta_at_accel(params_.comfort_longitudinal_accel);
-  double       prev_x_car             = current_x_in_car_cs;
+  const double accel_step = dist_inc_delta_at_accel(params_.comfort_longitudinal_accel_ms2);
+  double       prev_x_car = current_x_in_car_cs;
   for (size_t i{1}; i <= params_.trajectory_length_pts - prev_path_len; ++i)
   {
     // With each step I change the desired traveled distance in a way
@@ -289,11 +289,10 @@ int Planner::choose_best_lane()
   static constexpr auto BEHIND_SPEED_DIFF_PRIZE_COEFF = 0.03;
   static constexpr auto BEHIND_GAP_PRIZE_COEFF        = 0.02;
 
-  const auto speed_factor = ego_.speed_ms / desired_speed_ms_;
   const auto desired_ahead_gap =
-      std::max(params_.min_gap_lon * 2, speed_factor * params_.safe_gap_lon);
+      std::max(params_.min_gap_lon * 2, speed_factor() * params_.safe_gap_lon);
   const auto desired_behind_gap =
-      std::max(params_.min_gap_lon, speed_factor * params_.min_gap_lon * 2);
+      std::max(params_.min_gap_lon, speed_factor() * params_.min_gap_lon * 2);
 
   // Computes a lane "quality", the higher - the better, negative for bad cases.
   const auto compute_quality = [=](int l) {
@@ -442,6 +441,11 @@ double Planner::obstacle_speed(const RoadObject &object)
   return full_obst_speed;
 }
 
+double Planner::speed_factor() const
+{
+  return ego_.speed_ms / desired_speed_ms_;
+}
+
 double Planner::dist_inc_at_const_speed(double speed_ms) const
 {
   return speed_ms * params_.timestep_seconds;
@@ -455,7 +459,4 @@ double Planner::dist_inc_delta_at_accel(double accel) const
 void Planner::set_desired_speed_kmh(double desired_speed)
 {
   desired_speed_ms_ = desired_speed / 3.6;
-  // The faster a car moves, the more acceleration/deceleation is necessary
-  // to control it
-  params_.comfort_longitudinal_accel = desired_speed / 20.;
 }

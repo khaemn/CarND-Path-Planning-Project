@@ -31,7 +31,7 @@ struct PlannerParams
   size_t total_lanes{3};
   int    preferred_lane{1};
   double lane_width_m{4.};
-  double comfort_longitudinal_accel{3};
+  double comfort_longitudinal_accel_ms2{5.};
   double ego_length_m{5.0};
   double ego_width_m{3.0};
   double safe_gap_lon{8 * ego_length_m};
@@ -107,14 +107,15 @@ private:
   int  choose_best_lane();
 
   // Utility
-  void   clear_trajectory();
-  void   clear_prev_path();
-  void   clear_obstacles();
-  double dist_inc_at_const_speed(double speed_ms) const;
-  double dist_inc_delta_at_accel(double accel) const;
-  double lane_center_d(int lane) const;
-  int    lane_num_of(double d);
-  double obstacle_speed(const RoadObject &object);
+  void          clear_trajectory();
+  void          clear_prev_path();
+  void          clear_obstacles();
+  double        dist_inc_at_const_speed(double speed_ms) const;
+  double        dist_inc_delta_at_accel(double accel) const;
+  double        lane_center_d(int lane) const;
+  int           lane_num_of(double d);
+  double        obstacle_speed(const RoadObject &object);
+  inline double speed_factor() const;
 
 private:
   vector<float>                trajectory_x_;
