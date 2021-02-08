@@ -30,14 +30,13 @@ struct PlannerConstParams
   size_t num_lanes{3};
   double max_planning_s{30};
   double max_planning_d{lane_width_m * 2};
-  double comfort_longitudinal_accel{3/*2.5*/};  // m per second squared
+  double comfort_longitudinal_accel{3};  // m per second squared
   double ego_length_m{5.0};
   double ego_width_m{3.0};
-  double safe_gap_lon{6/*7*/ * ego_length_m};
-  double min_gap_lon{1.5 * ego_length_m};
-  double safe_gap_lat{1.2 * ego_width_m};
-  double min_gap_lat{ego_width_m};
+  double safe_gap_lon{8 * ego_length_m};
+  double min_gap_lon{2 * ego_length_m};
   int preferred_lane{1};
+  double min_possible_speed_ms{0.01};
   double trajectory_time_sec() const
   {
     return trajectory_length_pts * timestep_seconds;
@@ -140,5 +139,6 @@ private:
 
   // 0 for the leftmost lane, params_.num_lanes - 1 for the rightmost
   int current_lane_{0};
+  int future_lane_{current_lane_};
   bool is_slowed_down_by_obstacle_ahead{false};
 };
