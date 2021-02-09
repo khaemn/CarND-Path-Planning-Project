@@ -136,7 +136,7 @@ int Planner::choose_best_lane()
   static constexpr auto ALMOST                        = 0.95;
   static constexpr auto SUITABLE_OCCUPIED_LANE_PRIZE  = 50.;
   static constexpr auto FREE_LANE_PRIZE               = 111.;
-  static constexpr auto PREFERRED_LANE_PRIZE          = 10.;
+  static constexpr auto PREFERRED_LANE_PRIZE          = 15.;
   static constexpr auto KEEP_CURRENT_LANE_PRIZE       = 10.;
   static constexpr auto LANE_CHANGE_PRIZE             = 40.;
   static constexpr auto AHEAD_SPEED_DIFF_PRIZE_COEFF  = 0.02;
