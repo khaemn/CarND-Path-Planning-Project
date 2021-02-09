@@ -114,14 +114,15 @@ private:
   int  choose_best_lane();
 
   // Utility
-  void          clear_trajectory();
-  void          alarm_crop_trajectory();
-  void          clear_obstacles();
-  double        dist_inc_at_speed(double speed_ms) const;
-  double        dist_inc_delta_at_accel(double accel) const;
-  double        lane_center_d(int lane) const;
-  int           lane_num_of(double d);
-  double        obstacle_speed(const RoadObject &object);
+  void   clear_trajectory();
+  void   alarm_crop_trajectory();
+  void   clear_obstacles();
+  double dist_inc_at_speed(double speed_ms) const;
+  double dist_inc_delta_at_accel(double accel) const;
+  double lane_center_d(int lane) const;
+  int    lane_num_of(double d);
+  double obstacle_speed(const RoadObject &object);
+
   inline double speed_factor() const;
   inline bool   was_recent_lane_change() const;
 

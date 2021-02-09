@@ -21,9 +21,9 @@ void Planner::process_telemetry(const nlohmann::json &telemetry)
 
   update_allowed_speed();
 
-  choose_best_lane();
-
   update_lane_change_counter();
+
+  future_lane_ = choose_best_lane();
 
   // As we change lane only expecting a better speed,
   // this flag is cleared for the next iteration.
@@ -312,13 +312,13 @@ int Planner::choose_best_lane()
     lane_costs.push_back({quality, l});
   }
 
-  const auto best_lane = *std::max_element(lane_costs.begin(), lane_costs.end());
+  const auto best_lane_candidate = *std::max_element(lane_costs.begin(), lane_costs.end());
 
   // A rare edge-case. If there is no lanes with a positive cost, it means all lanes
   // are equally "bad" and the best solution is always to keep the current one.
-  future_lane_ = best_lane.first > 0 ? best_lane.second : current_lane_;
+  const auto best_lane = best_lane_candidate.first > 0 ? best_lane_candidate.second : current_lane_;
 
-  return future_lane_;
+  return best_lane;
 }
 
 void Planner::generate_trajectory()
