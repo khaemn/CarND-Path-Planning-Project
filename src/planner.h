@@ -31,7 +31,7 @@ struct PlannerParams
   size_t total_lanes{3};
   int    preferred_lane{1};
   double lane_width_m{4.};
-  double comfort_longitudinal_accel_ms2{5.};
+  double comfort_longitudinal_accel_ms2{4.};
   double ego_length_m{5.0};
   double ego_width_m{3.0};
   double safe_gap_lon{8 * ego_length_m};

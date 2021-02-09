@@ -284,10 +284,10 @@ int Planner::choose_best_lane()
   static constexpr auto PREFERRED_LANE_PRIZE          = 30.;
   static constexpr auto KEEP_CURRENT_LANE_PRIZE       = 20.;
   static constexpr auto LANE_CHANGE_PRIZE             = 40.;
-  static constexpr auto AHEAD_SPEED_DIFF_PRIZE_COEFF  = 0.02;
-  static constexpr auto AHEAD_GAP_PRIZE_COEFF         = 0.03;
-  static constexpr auto BEHIND_SPEED_DIFF_PRIZE_COEFF = 0.03;
-  static constexpr auto BEHIND_GAP_PRIZE_COEFF        = 0.02;
+  static constexpr auto AHEAD_SPEED_DIFF_PRIZE_COEFF  = 0.01;
+  static constexpr auto AHEAD_GAP_PRIZE_COEFF         = 0.02;
+  static constexpr auto BEHIND_SPEED_DIFF_PRIZE_COEFF = 0.02;
+  static constexpr auto BEHIND_GAP_PRIZE_COEFF        = 0.01;
 
   const auto desired_ahead_gap =
       std::max(params_.min_gap_lon * 2, speed_factor() * params_.safe_gap_lon);
@@ -340,7 +340,8 @@ int Planner::choose_best_lane()
       const auto  gap_behind       = ego_.s - closest_behind.s;
 
       if ((gap_behind > desired_behind_gap) ||
-          ((gap_behind > params_.min_gap_lon) && (car_behind_speed <= ego_.speed_ms)))
+          ((gap_behind > params_.min_gap_lon) && (car_behind_speed <= ego_.speed_ms)) ||
+          l == current_lane_)
       {
         quality += FREE_LANE_PRIZE;
       }
