@@ -15,7 +15,7 @@ void Planner::process_telemetry(const nlohmann::json &telemetry)
 
   parse_ego(telemetry);
 
-  parse_prev_path(telemetry);
+  parse_previous_path(telemetry);
 
   parse_obstacles(telemetry);
 
@@ -30,8 +30,7 @@ void Planner::process_telemetry(const nlohmann::json &telemetry)
   if (current_lane_ != future_lane_)
   {
     is_slowed_down_by_obstacle_ahead = false;
-    clear_prev_path();
-    allowed_now_speed_ms_ = desired_speed_ms_;
+    allowed_now_speed_ms_            = desired_speed_ms_;
   }
 
   generate_trajectory();
@@ -60,7 +59,7 @@ void Planner::parse_ego(const nlohmann::json &telemetry)
   update_current_lane();
 }
 
-void Planner::parse_prev_path(const nlohmann::json &telemetry)
+void Planner::parse_previous_path(const nlohmann::json &telemetry)
 {
   // Previous path data given to the Planner
   auto previous_path_x = telemetry["previous_path_x"];
@@ -126,7 +125,7 @@ void Planner::update_allowed_speed()
   // Approx. 1 m of braking distance per 1 kmh of speed
   // But as far as 1) the car reacts faster then a human and 2)
   // an immediate stop of the car ahead is impossible, I use only a half of distance
-  const auto DESIRED_AHEAD_GAP = 0.5 * ego_.speed_ms * 3.6;
+  const auto desired_gap = 0.5 * ego_.speed_ms * 3.6;
 
   is_slowed_down_by_obstacle_ahead = false;
 
@@ -161,9 +160,10 @@ void Planner::update_allowed_speed()
   if (closest_ahead.distance_to_ccp < params_.min_gap_lon)
   {
     // Full brake if there is no safe gap ahead
-    clear_prev_path();
     allowed_now_speed_ms_            = params_.min_possible_speed_ms;
     is_slowed_down_by_obstacle_ahead = true;
+    // Also delete the existing path to replan it as soon as possible
+    alarm_crop_trajectory();
     return;
   }
 
@@ -180,14 +180,7 @@ void Planner::update_allowed_speed()
     is_slowed_down_by_obstacle_ahead = true;
   }
 
-  if (closest_ahead.s < end_path_s_)
-  {
-    // Discard prev path if its end collides
-    clear_prev_path();
-  }
-
-  const auto coeff =
-      std::max(0.95, std::min(1.2, (closest_ahead.distance_to_ccp) / DESIRED_AHEAD_GAP));
+  const auto coeff = std::max(0.95, std::min(1.2, (closest_ahead.distance_to_ccp) / desired_gap));
 
   allowed_now_speed_ms_ = std::min(
       desired_speed_ms_, std::max(params_.min_possible_speed_ms, obst_parallel_speed * coeff));
@@ -204,10 +197,128 @@ void Planner::update_lane_change_counter()
   {
     lane_change_counter_++;
   }
-  if (lane_change_counter_ > params_.lane_change_period_sec / params_.timestep_seconds)
+  if (lane_change_counter_ > params_.min_time_between_lane_changes_sec / params_.timestep_seconds)
   {
     lane_change_counter_ = 0;
   }
+}
+
+int Planner::choose_best_lane()
+{
+  static constexpr auto ALMOST                        = 0.95;
+  static constexpr auto SUITABLE_OCCUPIED_LANE_PRIZE  = 50.;
+  static constexpr auto FREE_LANE_PRIZE               = 111.;
+  static constexpr auto PREFERRED_LANE_PRIZE          = 10.;
+  static constexpr auto KEEP_CURRENT_LANE_PRIZE       = 10.;
+  static constexpr auto LANE_CHANGE_PRIZE             = 40.;
+  static constexpr auto AHEAD_SPEED_DIFF_PRIZE_COEFF  = 0.02;
+  static constexpr auto AHEAD_GAP_PRIZE_COEFF         = 0.04;
+  static constexpr auto BEHIND_SPEED_DIFF_PRIZE_COEFF = 0.03;
+  static constexpr auto BEHIND_GAP_PRIZE_COEFF        = 0.02;
+  static constexpr auto RECENT_LANE_CHANGE_PENALTY    = -200.;
+
+  const auto desired_ahead_gap =
+      std::max(params_.min_gap_lon * 2, speed_factor() * params_.safe_gap_lon);
+  const auto desired_behind_gap =
+      std::max(params_.min_gap_lon * 2, 0.5 * speed_factor() * params_.safe_gap_lon);
+
+  // Computes a lane "quality", the higher - the better, negative for bad cases.
+  const auto compute_quality = [=](int l) {
+    double quality = 0.;
+
+    const auto &aheads  = obstacles_ahead_.at(l);
+    const auto &behinds = obstacles_behind_.at(l);
+
+    if (aheads.empty())
+    {
+      quality += FREE_LANE_PRIZE;
+    }
+    else
+    {
+      const auto &closest_ahead   = *aheads.begin();
+      const auto  gap_ahead       = closest_ahead.s - ego_.s;
+      const auto  car_ahead_speed = obstacle_speed(closest_ahead);
+
+      if ((gap_ahead > params_.safe_gap_lon) ||
+          (gap_ahead > desired_ahead_gap && car_ahead_speed >= desired_speed_ms_))
+      {
+        // A "truly" free lane is always (a bit) better
+        quality += ALMOST * FREE_LANE_PRIZE;
+      }
+      else
+      {
+        const auto speed_diff_cost =
+            std::min(SUITABLE_OCCUPIED_LANE_PRIZE,
+                     AHEAD_SPEED_DIFF_PRIZE_COEFF * pow((car_ahead_speed - ego_.speed_ms), 3));
+        const auto distance_gap_cost =
+            std::min(SUITABLE_OCCUPIED_LANE_PRIZE,
+                     AHEAD_GAP_PRIZE_COEFF * pow(gap_ahead - desired_ahead_gap, 3));
+        quality += speed_diff_cost;
+        quality += distance_gap_cost;
+      }
+    }
+
+    if (behinds.empty())
+    {
+      quality += FREE_LANE_PRIZE;
+    }
+    else
+    {
+      const auto &closest_behind   = *behinds.begin();
+      const auto  car_behind_speed = obstacle_speed(closest_behind);
+      const auto  gap_behind       = ego_.s - closest_behind.s;
+
+      if ((gap_behind > desired_behind_gap) ||
+          ((gap_behind > params_.min_gap_lon) && (car_behind_speed <= ego_.speed_ms)) ||
+          l == current_lane_)
+      {
+        quality += ALMOST * FREE_LANE_PRIZE;
+      }
+      else
+      {
+        const auto speed_diff_cost =
+            std::min(SUITABLE_OCCUPIED_LANE_PRIZE,
+                     BEHIND_SPEED_DIFF_PRIZE_COEFF * pow((ego_.speed_ms - car_behind_speed), 3));
+        const auto distance_gap_cost =
+            std::min(SUITABLE_OCCUPIED_LANE_PRIZE,
+                     BEHIND_GAP_PRIZE_COEFF * pow(gap_behind - params_.min_gap_lon, 3));
+        quality += speed_diff_cost;
+        quality += distance_gap_cost;
+      }
+    }
+    if (!is_slowed_down_by_obstacle_ahead)
+    {
+      quality += PREFERRED_LANE_PRIZE * (l == params_.preferred_lane);
+      quality += KEEP_CURRENT_LANE_PRIZE * (l == current_lane_);
+    }
+    if (current_lane_ != future_lane_)
+    {
+      quality += LANE_CHANGE_PRIZE * (l == future_lane_);
+    }
+    if (was_recent_lane_change() && (l != current_lane_) && (l != future_lane_))
+    {
+      quality += RECENT_LANE_CHANGE_PENALTY;
+    }
+    return quality;
+  };
+
+  const int leftmost_lane  = std::max(0, current_lane_ - 1);
+  const int rightmost_lane = std::min(int(params_.total_lanes - 1), current_lane_ + 1);
+  std::vector<std::pair<double, int>> lane_costs;
+
+  for (int l{leftmost_lane}; l <= rightmost_lane; l++)
+  {
+    const auto quality = compute_quality(l);
+    lane_costs.push_back({quality, l});
+  }
+
+  const auto best_lane = *std::max_element(lane_costs.begin(), lane_costs.end());
+
+  // A rare edge-case. If there is no lanes with a positive cost, it means all lanes
+  // are equally "bad" and the best solution is always to keep the current one.
+  future_lane_ = best_lane.first > 0 ? best_lane.second : current_lane_;
+
+  return future_lane_;
 }
 
 void Planner::generate_trajectory()
@@ -226,7 +337,7 @@ void Planner::generate_trajectory()
   // if there are at least 2 pts in the prev path, the reference position
   // for the path should be at the end of the previous one; otherwise,
   // the ref position would be calculated from the CCP.
-  double current_dist_inc = dist_inc_at_const_speed(ego_.speed_ms);
+  double current_dist_inc = dist_inc_at_speed(ego_.speed_ms);
   if (prev_path_len >= 2)
   {
     ref_x            = double(trajectory_x_.at(prev_path_len - 1));
@@ -269,25 +380,28 @@ void Planner::generate_trajectory()
   tk::spline   spline;
   spline.set_points(spline_keypts_x, spline_keypts_y);
 
-  const double allowed_distance_inc = dist_inc_at_const_speed(allowed_now_speed_ms_);
+  const double allowed_distance_inc = dist_inc_at_speed(allowed_now_speed_ms_);
 
   double       dist_inc_for_next_step = current_dist_inc;
   const double sin_yaw                = sin(ref_yaw);
   const double cos_yaw                = cos(ref_yaw);
-  const double accel_step = dist_inc_delta_at_accel(params_.comfort_longitudinal_accel_ms2);
-  double       prev_x_car = current_x_in_car_cs;
+  double       prev_x_car             = current_x_in_car_cs;
   for (size_t i{1}; i <= params_.trajectory_length_pts - prev_path_len; ++i)
   {
     // With each step I change the desired traveled distance in a way
     // to approach the desired/allowed speed and keep a comfort accel/deccel.
     if (dist_inc_for_next_step < allowed_distance_inc)
     {
-      dist_inc_for_next_step = std::min(allowed_distance_inc, dist_inc_for_next_step + accel_step);
+      const double accel_step = dist_inc_delta_at_accel(params_.comfort_longitudinal_accel_ms2);
+      dist_inc_for_next_step  = std::min(allowed_distance_inc, dist_inc_for_next_step + accel_step);
     }
     else
     {
-      dist_inc_for_next_step =
-          std::max(allowed_distance_inc, dist_inc_for_next_step - 1.5 * accel_step);
+      const auto deceleration_val = ego_.speed_ms > 2.0 * allowed_now_speed_ms_
+                                        ? params_.max_braking_deceleration_ms2
+                                        : params_.comfort_longitudinal_accel_ms2;
+      const double decel_step = dist_inc_delta_at_accel(deceleration_val);
+      dist_inc_for_next_step  = std::max(allowed_distance_inc, dist_inc_for_next_step - decel_step);
     }
     const double next_x_car = prev_x_car + dist_inc_for_next_step;
     prev_x_car              = next_x_car;
@@ -302,140 +416,26 @@ void Planner::generate_trajectory()
   }
 }
 
-int Planner::choose_best_lane()
-{
-  static constexpr auto SUITABLE_OCCUPIED_LANE_PRIZE  = 50.;
-  static constexpr auto FREE_LANE_PRIZE               = 111.;
-  static constexpr auto PREFERRED_LANE_PRIZE          = 10.;
-  static constexpr auto KEEP_CURRENT_LANE_PRIZE       = 10.;
-  static constexpr auto LANE_CHANGE_PRIZE             = 40.;
-  static constexpr auto AHEAD_SPEED_DIFF_PRIZE_COEFF  = 0.01;
-  static constexpr auto AHEAD_GAP_PRIZE_COEFF         = 0.02;
-  static constexpr auto BEHIND_SPEED_DIFF_PRIZE_COEFF = 0.02;
-  static constexpr auto BEHIND_GAP_PRIZE_COEFF        = 0.01;
-  static constexpr auto RECENT_LANE_CHANGE_PENALTY    = -300.;
-
-  const auto desired_ahead_gap =
-      std::max(params_.min_gap_lon * 2, speed_factor() * params_.safe_gap_lon);
-  const auto desired_behind_gap =
-      std::max(params_.min_gap_lon * 2, 0.5 * speed_factor() * params_.safe_gap_lon);
-
-  // Computes a lane "quality", the higher - the better, negative for bad cases.
-  const auto compute_quality = [=](int l) {
-    double quality = 0.;
-
-    const auto &aheads  = obstacles_ahead_.at(l);
-    const auto &behinds = obstacles_behind_.at(l);
-
-    if (aheads.empty())
-    {
-      quality += FREE_LANE_PRIZE;
-    }
-    else
-    {
-      const auto &closest_ahead   = *aheads.begin();
-      const auto  gap_ahead       = closest_ahead.s - ego_.s;
-      const auto  car_ahead_speed = obstacle_speed(closest_ahead);
-
-      if ((gap_ahead > params_.safe_gap_lon) ||
-          (gap_ahead > desired_ahead_gap && car_ahead_speed >= desired_speed_ms_))
-      {
-        // A "truly" free lane is always (a bit) better
-        quality += FREE_LANE_PRIZE * 0.95;
-      }
-      else
-      {
-        const auto speed_diff_cost =
-            std::min(SUITABLE_OCCUPIED_LANE_PRIZE,
-                     AHEAD_SPEED_DIFF_PRIZE_COEFF * pow((car_ahead_speed - ego_.speed_ms), 3));
-        const auto distance_gap_cost =
-            std::min(SUITABLE_OCCUPIED_LANE_PRIZE,
-                     AHEAD_GAP_PRIZE_COEFF * pow(gap_ahead - desired_ahead_gap, 3));
-        quality += speed_diff_cost;
-        quality += distance_gap_cost;
-      }
-    }
-
-    if (behinds.empty())
-    {
-      quality += FREE_LANE_PRIZE;
-    }
-    else
-    {
-      const auto &closest_behind   = *behinds.begin();
-      const auto  car_behind_speed = obstacle_speed(closest_behind);
-      const auto  gap_behind       = ego_.s - closest_behind.s;
-
-      if ((gap_behind > desired_behind_gap) ||
-          ((gap_behind > params_.min_gap_lon) && (car_behind_speed <= ego_.speed_ms)) ||
-          l == current_lane_)
-      {
-        quality += FREE_LANE_PRIZE;
-      }
-      else
-      {
-        const auto speed_diff_cost =
-            std::min(SUITABLE_OCCUPIED_LANE_PRIZE,
-                     BEHIND_SPEED_DIFF_PRIZE_COEFF * pow((ego_.speed_ms - car_behind_speed), 3));
-        const auto distance_gap_cost =
-            std::min(SUITABLE_OCCUPIED_LANE_PRIZE,
-                     BEHIND_GAP_PRIZE_COEFF * pow(gap_behind - params_.min_gap_lon, 3));
-        quality += speed_diff_cost;
-        quality += distance_gap_cost;
-      }
-    }
-
-    if (l == params_.preferred_lane && (!is_slowed_down_by_obstacle_ahead))
-    {
-      quality += PREFERRED_LANE_PRIZE;
-    }
-    if (l == current_lane_ && (!is_slowed_down_by_obstacle_ahead))
-    {
-      quality += KEEP_CURRENT_LANE_PRIZE;
-    }
-    if (was_recent_lane_change())
-    {
-      if (l != current_lane_ && l != future_lane_)
-      {
-        quality += RECENT_LANE_CHANGE_PENALTY;
-      }
-    }
-    if ((l == future_lane_) && (current_lane_ != future_lane_))
-    {
-      quality += LANE_CHANGE_PRIZE;
-    }
-    return quality;
-  };
-
-  const int leftmost_lane  = std::max(0, current_lane_ - 1);
-  const int rightmost_lane = std::min(int(params_.total_lanes - 1), current_lane_ + 1);
-  std::vector<std::pair<double, int>> lane_costs;
-
-  for (int l{leftmost_lane}; l <= rightmost_lane; l++)
-  {
-    const auto quality = compute_quality(l);
-    lane_costs.push_back({quality, l});
-  }
-
-  const auto best_lane = *std::max_element(lane_costs.begin(), lane_costs.end());
-
-  // A rare edge-case. If there is no lanes with a positive cost, it means all lanes
-  // are equally "bad" and the best solution is always to keep the current one.
-  future_lane_ = best_lane.first > 0 ? best_lane.second : current_lane_;
-
-  return future_lane_;
-}
-
 void Planner::clear_trajectory()
 {
   trajectory_x_.clear();
   trajectory_y_.clear();
 }
 
-void Planner::clear_prev_path()
+void Planner::alarm_crop_trajectory()
 {
-  end_path_d_ = ego_.d;
-  end_path_s_ = ego_.s;
+  const long elements_to_leave = params_.trajectory_length_pts / 10;
+
+  auto crop = [elements_to_leave](vector<float> &points) {
+    if (points.size() <= elements_to_leave)
+    {
+      return;
+    }
+    points.erase(points.begin() + elements_to_leave, points.end());
+  };
+
+  crop(trajectory_x_);
+  crop(trajectory_y_);
 }
 
 void Planner::clear_obstacles()
@@ -478,10 +478,11 @@ double Planner::speed_factor() const
 bool Planner::was_recent_lane_change() const
 {
   return lane_change_counter_ > 0 &&
-         lane_change_counter_ < params_.lane_change_period_sec / params_.timestep_seconds;
+         lane_change_counter_ <
+             params_.min_time_between_lane_changes_sec / params_.timestep_seconds;
 }
 
-double Planner::dist_inc_at_const_speed(double speed_ms) const
+double Planner::dist_inc_at_speed(double speed_ms) const
 {
   return speed_ms * params_.timestep_seconds;
 }
@@ -491,7 +492,7 @@ double Planner::dist_inc_delta_at_accel(double accel) const
   return accel * params_.timestep_seconds * params_.timestep_seconds;
 }
 
-void Planner::set_desired_speed_kmh(double desired_speed)
+void Planner::set_desired_speed_kmh(double desired_speed_kmh)
 {
-  desired_speed_ms_ = desired_speed / 3.6;
+  desired_speed_ms_ = desired_speed_kmh / 3.6;
 }

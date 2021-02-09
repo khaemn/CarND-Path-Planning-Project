@@ -22,10 +22,15 @@ int main() {
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
-  // The max s value before wrapping around the track back to 0
-  double max_s = 6945.554;
 
   std::ifstream in_map_(map_file_.c_str(), std::ifstream::in);
+
+  if (not in_map_.is_open())
+  {
+    std::cout << "Can not open map file at " << map_file_ << ", impossible to operate without it."
+              << std::endl;
+    std::exit(1);
+  }
 
   string line;
   while (getline(in_map_, line)) {
@@ -48,7 +53,6 @@ int main() {
   }
 
   PlannerParams params;
-  // Default param values can be overwritten below.
 
   Planner planner(road_map, params);
   planner.set_desired_speed_kmh(78.5);

@@ -5,39 +5,44 @@
 
 #include <iostream>
 #include <set>
-#include <string>
 #include <vector>
 
-using nlohmann::json;
-using std::string;
-using std::vector;
-
-/// A more convenient wrapper around several data vectors,
+/// A convenient wrapper around several data vectors,
 /// holding the waypoint coordinates in different coordinate
 /// systems
 struct RoadMap
 {
-  vector<double> x;
-  vector<double> y;
-  vector<double> s;
-  vector<double> dx;
-  vector<double> dy;
+  std::vector<double> x;
+  std::vector<double> y;
+  std::vector<double> s;
+  std::vector<double> dx;
+  std::vector<double> dy;
 };
 
 struct PlannerParams
 {
+  // Planning algorithm parameters
   double timestep_seconds{0.02};
   size_t trajectory_length_pts{50};
+  size_t min_time_between_lane_changes_sec{2};
+
+  // Highway parameters
   size_t total_lanes{3};
   int    preferred_lane{1};
   double lane_width_m{4.};
+
+  // Ego car drivetrain parameters
   double comfort_longitudinal_accel_ms2{4.};
+  double max_braking_deceleration_ms2{8.};
+  double min_possible_speed_ms{0.05};
+
+  // Ego car approximate size
   double ego_length_m{5.0};
   double ego_width_m{3.0};
+
+  // Longitudinal (along 's' Frenet axis) gaps
   double safe_gap_lon{8 * ego_length_m};
   double min_gap_lon{2 * ego_length_m};
-  double min_possible_speed_ms{0.05};
-  size_t lane_change_period_sec{2};
 };
 
 /// A wrapper for the rest of cars or other objects on the road
@@ -99,7 +104,7 @@ public:
 
 private:
   void parse_ego(const nlohmann::json &telemetry);
-  void parse_prev_path(const nlohmann::json &telemetry);
+  void parse_previous_path(const nlohmann::json &telemetry);
   void parse_obstacles(const nlohmann::json &telemetry);
   void update_allowed_speed();
   void update_current_lane();
@@ -110,33 +115,36 @@ private:
 
   // Utility
   void          clear_trajectory();
-  void          clear_prev_path();
+  void          alarm_crop_trajectory();
   void          clear_obstacles();
-  double        dist_inc_at_const_speed(double speed_ms) const;
+  double        dist_inc_at_speed(double speed_ms) const;
   double        dist_inc_delta_at_accel(double accel) const;
   double        lane_center_d(int lane) const;
   int           lane_num_of(double d);
   double        obstacle_speed(const RoadObject &object);
   inline double speed_factor() const;
-  bool was_recent_lane_change() const;
+  inline bool   was_recent_lane_change() const;
 
 private:
-  vector<float>                trajectory_x_;
-  vector<float>                trajectory_y_;
-  Car                          ego_;
-  vector<std::set<RoadObject>> obstacles_ahead_;
-  vector<std::set<RoadObject>> obstacles_behind_;
+  vector<float> trajectory_x_;
+  vector<float> trajectory_y_;
+  Car           ego_;
+
   // According to requirements, the road map is immutable.
   const RoadMap map_;
   PlannerParams params_;
-  double        desired_speed_ms_{0.};
-  double        allowed_now_speed_ms_{0.};
+
+  vector<std::set<RoadObject>> obstacles_ahead_;
+  vector<std::set<RoadObject>> obstacles_behind_;
 
   double end_path_d_{0.};
   double end_path_s_{0.};
 
-  int  current_lane_{1};  // 0 for the leftmost lane
-  int  future_lane_{current_lane_};
+  double desired_speed_ms_{0.};
+  double allowed_now_speed_ms_{0.};
+
+  int    current_lane_{1};  // 0 for the leftmost lane
+  int    future_lane_{current_lane_};
   size_t lane_change_counter_{0};
-  bool is_slowed_down_by_obstacle_ahead{false};
+  bool   is_slowed_down_by_obstacle_ahead{false};
 };
