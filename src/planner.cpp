@@ -36,78 +36,6 @@ void Planner::process_telemetry(const nlohmann::json &telemetry)
   generate_trajectory();
 }
 
-const std::vector<float> &Planner::x_trajectory_points() const
-{
-  return trajectory_x_;
-}
-
-const std::vector<float> &Planner::y_trajectory_points() const
-{
-  return trajectory_y_;
-}
-
-void Planner::parse_ego(const nlohmann::json &telemetry)
-{
-  // Main car's localization Data
-  ego_.x        = telemetry["x"];
-  ego_.y        = telemetry["y"];
-  ego_.s        = telemetry["s"];
-  ego_.d        = telemetry["d"];
-  ego_.yaw      = deg2rad(telemetry["yaw"]);
-  ego_.speed_ms = double(telemetry["speed"]) / 2.24;
-
-  update_current_lane();
-}
-
-void Planner::parse_previous_path(const nlohmann::json &telemetry)
-{
-  // Previous path data given to the Planner
-  auto previous_path_x = telemetry["previous_path_x"];
-  auto previous_path_y = telemetry["previous_path_y"];
-
-  if (previous_path_x.size() != previous_path_y.size())
-  {
-    std::cout << "Error: previous path x size " << previous_path_x.size()
-              << " != previous path y size " << previous_path_y.size() << std::endl;
-  }
-
-  for (size_t i{0}; i < previous_path_x.size(); ++i)
-  {
-    trajectory_x_.push_back(previous_path_x[i]);
-    trajectory_y_.push_back(previous_path_y[i]);
-  }
-
-  // Previous path's end s and d values
-  end_path_s_ = telemetry["end_path_s"];
-  end_path_d_ = telemetry["end_path_d"];
-}
-
-void Planner::parse_obstacles(const nlohmann::json &telemetry)
-{
-  auto sensor_fusion = telemetry["sensor_fusion"];
-  clear_obstacles();
-  for (size_t i{0}; i < sensor_fusion.size(); ++i)
-  {
-    auto       obj = sensor_fusion[i];
-    RoadObject obstacle{obj[0], obj[1], obj[2], obj[3],
-                        obj[4], obj[5], obj[6], distance(ego_.x, ego_.y, obj[1], obj[2])};
-    const auto its_lane = lane_num_of(obstacle.d);
-    if (its_lane < 0 || its_lane > int(params_.total_lanes))
-    {
-      // skip this obstacle, it is out of our road;
-      continue;
-    }
-    if (obstacle.s > ego_.s)
-    {
-      obstacles_ahead_[size_t(its_lane)].insert(obstacle);
-    }
-    else
-    {
-      obstacles_behind_[size_t(its_lane)].insert(obstacle);
-    }
-  }
-}
-
 void Planner::update_allowed_speed()
 {
   // Desired distance to a car ahead is a maximum braking distance
@@ -413,6 +341,78 @@ void Planner::generate_trajectory()
 
     trajectory_x_.push_back(float(next_x));
     trajectory_y_.push_back(float(next_y));
+  }
+}
+
+const std::vector<float> &Planner::x_trajectory_points() const
+{
+  return trajectory_x_;
+}
+
+const std::vector<float> &Planner::y_trajectory_points() const
+{
+  return trajectory_y_;
+}
+
+void Planner::parse_ego(const nlohmann::json &telemetry)
+{
+  // Main car's localization Data
+  ego_.x        = telemetry["x"];
+  ego_.y        = telemetry["y"];
+  ego_.s        = telemetry["s"];
+  ego_.d        = telemetry["d"];
+  ego_.yaw      = deg2rad(telemetry["yaw"]);
+  ego_.speed_ms = double(telemetry["speed"]) / 2.24;
+
+  update_current_lane();
+}
+
+void Planner::parse_previous_path(const nlohmann::json &telemetry)
+{
+  // Previous path data given to the Planner
+  auto previous_path_x = telemetry["previous_path_x"];
+  auto previous_path_y = telemetry["previous_path_y"];
+
+  if (previous_path_x.size() != previous_path_y.size())
+  {
+    std::cout << "Error: previous path x size " << previous_path_x.size()
+              << " != previous path y size " << previous_path_y.size() << std::endl;
+  }
+
+  for (size_t i{0}; i < previous_path_x.size(); ++i)
+  {
+    trajectory_x_.push_back(previous_path_x[i]);
+    trajectory_y_.push_back(previous_path_y[i]);
+  }
+
+  // Previous path's end s and d values
+  end_path_s_ = telemetry["end_path_s"];
+  end_path_d_ = telemetry["end_path_d"];
+}
+
+void Planner::parse_obstacles(const nlohmann::json &telemetry)
+{
+  auto sensor_fusion = telemetry["sensor_fusion"];
+  clear_obstacles();
+  for (size_t i{0}; i < sensor_fusion.size(); ++i)
+  {
+    auto       obj = sensor_fusion[i];
+    RoadObject obstacle{obj[0], obj[1], obj[2], obj[3],
+                        obj[4], obj[5], obj[6], distance(ego_.x, ego_.y, obj[1], obj[2])};
+    const auto its_lane = lane_num_of(obstacle.d);
+    if (its_lane < 0 || its_lane > int(params_.total_lanes))
+    {
+      // skip this obstacle, it is out of our road;
+      continue;
+    }
+    if (obstacle.s > ego_.s)
+    {
+      obstacles_ahead_[size_t(its_lane)].insert(obstacle);
+    }
+    else
+    {
+      obstacles_behind_[size_t(its_lane)].insert(obstacle);
+    }
   }
 }
 
