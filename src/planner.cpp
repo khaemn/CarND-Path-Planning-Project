@@ -23,9 +23,13 @@ void Planner::process_telemetry(const nlohmann::json &telemetry)
 
   choose_best_lane();
 
-  if (future_lane_ != current_lane_)
+  // As we change lane only expecting a better speed,
+  // this flag is cleared for the next iteration.
+  if (current_lane_ != future_lane_)
   {
+    is_slowed_down_by_obstacle_ahead = false;
     clear_prev_path();
+    allowed_now_speed_ms_ = desired_speed_ms_;
   }
 
   generate_trajectory();
@@ -172,8 +176,10 @@ void Planner::update_allowed_speed()
     clear_prev_path();
   }
 
-  const auto coeff = ((closest_ahead.distance_to_ccp - params_.min_gap_lon) / DESIRED_AHEAD_GAP);
-
+  const auto coeff = std::max(
+      0.9,
+      std::min(1.05, (closest_ahead.distance_to_ccp - params_.min_gap_lon) / DESIRED_AHEAD_GAP));
+  std::cout << "Coeff " << coeff << " clsspd " << obst_parallel_speed << std::endl;
   allowed_now_speed_ms_ = std::min(
       desired_speed_ms_, std::max(params_.min_possible_speed_ms, obst_parallel_speed * coeff));
 }
@@ -213,8 +219,6 @@ void Planner::generate_trajectory()
   auto         ref_s_d = getFrenet(ref_x, ref_y, ref_yaw, map_.x, map_.y);
   const double ref_s   = ref_s_d.at(0);
   const double ref_d   = ref_s_d.at(1);
-  //  const double d_center_offset = lane_center_d(current_lane_) - ref_d;
-  //  const double d_step_m = d_center_offset / steps_ahead;
 
   vector<double> spline_keypts_x{prev_ref_x, ref_x};
   vector<double> spline_keypts_y{prev_ref_y, ref_y};
@@ -311,7 +315,7 @@ int Planner::choose_best_lane()
       const auto  gap_ahead       = closest_ahead.s - ego_.s;
       const auto  car_ahead_speed = obstacle_speed(closest_ahead);
 
-      if ((gap_ahead > params_.safe_gap_lon && car_ahead_speed >= ego_.speed_ms) ||
+      if ((gap_ahead > params_.safe_gap_lon) ||
           (gap_ahead > desired_ahead_gap && car_ahead_speed >= desired_speed_ms_))
       {
         quality += FREE_LANE_PRIZE;
@@ -387,13 +391,6 @@ int Planner::choose_best_lane()
   // A rare edge-case. If there is no lanes with a positive cost, it means all lanes
   // are equally "bad" and the best solution is to keep the current one.
   future_lane_ = best_lane.first > 0 ? best_lane.second : current_lane_;
-
-  // As we change lane only expecting a better speed,
-  // this flag is cleared for the next iteration.
-  if (current_lane_ != future_lane_)
-  {
-    is_slowed_down_by_obstacle_ahead = false;
-  }
 
   return future_lane_;
 }
