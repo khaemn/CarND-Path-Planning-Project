@@ -37,6 +37,7 @@ struct PlannerParams
   double safe_gap_lon{8 * ego_length_m};
   double min_gap_lon{2 * ego_length_m};
   double min_possible_speed_ms{0.05};
+  size_t lane_change_period_sec{2};
 };
 
 /// A wrapper for the rest of cars or other objects on the road
@@ -102,6 +103,7 @@ private:
   void parse_obstacles(const nlohmann::json &telemetry);
   void update_allowed_speed();
   void update_current_lane();
+  void update_lane_change_counter();
 
   void generate_trajectory();
   int  choose_best_lane();
@@ -116,6 +118,7 @@ private:
   int           lane_num_of(double d);
   double        obstacle_speed(const RoadObject &object);
   inline double speed_factor() const;
+  bool was_recent_lane_change() const;
 
 private:
   vector<float>                trajectory_x_;
@@ -132,7 +135,8 @@ private:
   double end_path_d_{0.};
   double end_path_s_{0.};
 
-  int  current_lane_{0};  // 0 for the leftmost lane
+  int  current_lane_{1};  // 0 for the leftmost lane
   int  future_lane_{current_lane_};
+  size_t lane_change_counter_{0};
   bool is_slowed_down_by_obstacle_ahead{false};
 };
