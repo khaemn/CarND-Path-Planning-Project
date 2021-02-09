@@ -35,10 +35,6 @@ void Planner::process_telemetry(const nlohmann::json &telemetry)
   }
 
   generate_trajectory();
-
-  //  std::cout << "Desired spd " << desired_speed_ms_ << ", allowed spd " << allowed_now_speed_ms_
-  //            << ", now in lane " << current_lane_ << ", spd " << ego_.speed_ms
-  //            << ", slowed: " << is_slowed_down_by_obstacle_ahead << std::endl;
 }
 
 const std::vector<float> &Planner::x_trajectory_points() const
@@ -161,9 +157,6 @@ void Planner::update_allowed_speed()
 
   const auto obst_parallel_speed = obstacle_speed(closest_ahead);
 
-  //  std::cout << "Obst: " << closest_ahead.id << " dist " << closest_ahead.distance_to_ccp << "
-  //  spd " << obst_parallel_speed << std::endl;
-
   // Avoid collision
   if (closest_ahead.distance_to_ccp < params_.min_gap_lon)
   {
@@ -195,8 +188,7 @@ void Planner::update_allowed_speed()
 
   const auto coeff =
       std::max(0.95, std::min(1.2, (closest_ahead.distance_to_ccp) / DESIRED_AHEAD_GAP));
-//  std::cout << "Coeff " << coeff << " clsspd " << obst_parallel_speed << " dgap "
-//            << DESIRED_AHEAD_GAP << std::endl;
+
   allowed_now_speed_ms_ = std::min(
       desired_speed_ms_, std::max(params_.min_possible_speed_ms, obst_parallel_speed * coeff));
 }
@@ -348,7 +340,8 @@ int Planner::choose_best_lane()
       if ((gap_ahead > params_.safe_gap_lon) ||
           (gap_ahead > desired_ahead_gap && car_ahead_speed >= desired_speed_ms_))
       {
-        quality += FREE_LANE_PRIZE;
+        // A "truly" free lane is always (a bit) better
+        quality += FREE_LANE_PRIZE * 0.95;
       }
       else
       {
@@ -418,22 +411,16 @@ int Planner::choose_best_lane()
   const int rightmost_lane = std::min(int(params_.total_lanes - 1), current_lane_ + 1);
   std::vector<std::pair<double, int>> lane_costs;
 
-  std::cout << "Was rec " << was_recent_lane_change() << "(" << lane_change_counter_ << ")"
-            << params_.lane_change_period_sec / params_.timestep_seconds << " ";
-
   for (int l{leftmost_lane}; l <= rightmost_lane; l++)
   {
     const auto quality = compute_quality(l);
     lane_costs.push_back({quality, l});
-    std::cout << " l " << l << " q " << quality;
   }
-
-  std::cout << std::endl;
 
   const auto best_lane = *std::max_element(lane_costs.begin(), lane_costs.end());
 
   // A rare edge-case. If there is no lanes with a positive cost, it means all lanes
-  // are equally "bad" and the best solution is to keep the current one.
+  // are equally "bad" and the best solution is always to keep the current one.
   future_lane_ = best_lane.first > 0 ? best_lane.second : current_lane_;
 
   return future_lane_;
