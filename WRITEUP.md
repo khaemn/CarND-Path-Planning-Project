@@ -14,23 +14,26 @@ The code was developed for the project of the Udacity
 Actually, all the planning behavior during a highway driving can be described by a small set of simple rules. At first, here is crucial rules, that can never be violated:
 
 * Do not collide into other objects on the road
-* Do not move faster then a current speed limitation
+* Do not move faster then a current speed limit
 * Drive only in lanes at the right part of the road
 * Do not exceed absolute maximum acceleration/deceleration limits, as it leads to wheel skidding
 
 Other important rules *could* be violated in a particular situation to fulfill the crucial ones above:
 
-* When the current speed is higher or lower that a necessary, accelerate or decelerate smoothly to prevent jerk
+* When the current speed is higher or lower that a necessary, accelerate or decelerate smoothly to prevent longitudinal jerk
 * When driving straight (e.g. not changing lanes): keep close to the lane center
-* If all lanes are free: 
+* If all the lanes are free: 
   * Prefer driving at the highest legal speed minus some small safety delta
   * If there are 3 lanes or more: prefer driving in the central lane(s), as the leftmost and rightmost usually are more dangerous
 * If there's an obstacle ahead:
   * If no free adjacent lane available - decelerate and maintain a safe distance to the obstacle ahead
-  * If there is a free adjacent lane - go to that lane via a smooth trajectory and cross the lane boundaries faster than in 3 seconds
-* Avoid changing lanes too often (say, once in several seconds)
-* Persist in completion of the lane changing, e.g. do not return back to the initial lane if the maneuver has been executing already
-* When changing lanes, prefer doing this with acceleration, not deceleration
+  * If there is a free adjacent lane - go to that lane
+* When changing lanes:
+  * Go via a smooth trajectory, that minimizes lateral jerk
+  * Cross the lane boundaries faster than in 3 seconds
+  * Prefer acceleration if possible, and avoid deceleration
+  * Complete the maneuver, e.g. do not return back to the initial lane if the maneuver has been already started
+* Avoid changing lanes too often (say, once in 5-10 seconds)
 
 
 ## Implementation
@@ -91,5 +94,68 @@ Knowing the current ego car position and speed, and also knowing the future lane
 4. Generate a spline through the 5 points.
 5. The spline sets the geometric path, that should be close to the optimal path in terms of smoothness.
 6. Compute the distance between trajectory points, that result in a necessary speed; each next point should be a bit further if ego car accelerates, and a bit closer, if decelerates; the exact distance increment between each two points is calculated using speed and acceleration limits.
-7. All the points of the trajectory are rotated back to the global map coordinate system.
+7. Take all the new points of the trajectory are rotated back to the global map coordinate system.
+
+### Prediction
+
+There is no explicit prediction algorithm in my solution. At the beginning I was concentrated at getting the collision-free driving as soon and as simple as possible, so I've developed the `update_allowed_speed()` method and the allowed speed concept, which onl reacts to the current telemetry data. Later, it turned out that, with some tweaking of the cost functions inside the `choose_best_lane()`, it is possible to achieve a correct behavior in most of the road situations without a necessity for prediction. This is not the best approach if we need to drive faster (e.g. the speed difference between the ego car and other cars is significant), but up to 75..78 kmh it still works pretty fine. The advantage here is more simple and readable code, and that was my first priority.
+Well, still there _is_ some implicit 'prediction', as the cost functions take into account the _speed_ of a car behind and/or ahead in each lane, and if a car is close enough to ego, their speed difference influences on the lane 'quality' in a cubic manner (e.g. significantly and non-linearily).
+
+### Known issues
+
+#### Traffic traps
+
+Imagine a 3-lane road with the ego car at 'E' and other cars at 'A', 'B' and 'C' :
+
+```
+  0   1   2
+|   |   |   |
+| ^ |   |   |
+| A |   |   |
+|   | ^ |   |
+|   | B |   |
+|   |   |   |
+|   |   |   |
+|   |   |   |
+|   | ^ |   |
+|   | E |   |
+|   |   |   |
+|   |   |   |
+|   |   | ^ |
+|   |   | C |
+|   |   |   |
+```
+Say, 'A' drive at 70 kmh, B drives at 69 kmh and ego drives at 78 kmh. It often happens, that all cars are close enough that their speeds are taken into account. As the 'A' is ahead AND it drives faster than 'B', the lane 0 gets higher 'quality'y, than 1. The lane 2 is 'free' ahead, BUT it is not "truly free" both ahead and behind because of C, so the planner will assign it a quality value, that is close to 0 and 1. Sometimes (for example if 'C' drives at 78.1 kmh) this quality for lane 2 would be a bit smaller then for lane 0, and the ego car would change to the lane 0.
+Then it will approach to 'A' as close as possible (keeping minimal safety gap). 
+```
+ 0   1   2
+|   |   |   |
+| ^ |   |   |
+| A |   |   |
+|   | ^ |   |
+|   | B |   |
+| ^ |   |   |
+| E |   |   |
+|   |   |   |
+|   |   | ^ |
+|   |   | C |
+|   |   |   |
+```
+If now A and B drive both at 70 or 69 kmh, the ego car would stuck in this trap forever, never changing to lane 2 even after C disappear.
+The correct solution here would be to monitor all three lanes, not only the adjacent ones, but such an approach would bloat the complexity of the cost functions and the decision maker.
+Luckily, such traps in the simulator (and much more in real life) would change their configuration over time, and eventually become somehting like:
+```
+  0   1   2
+|   |   |   |
+| ^ | ^ |   |
+| A | B |   |
+|   |   |   |
+|   |   |   |
+| ^ |   |   |
+| E |   |   |
+|   |   |   |
+|   |   |   |
+```
+And the ego car would immediately go to lane 1, (as it is a 'preferred' lane), and then, in a couple of seconds, into lane 2, as it is free now. I have observed such "trapping" several times, and just tweaking the existing cost functions can not beat this problem. However, the planner still fullfills the safety requirements and the ego car eventually gets out of such traps, so I believe this is not a showstopper.
+
 
