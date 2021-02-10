@@ -125,8 +125,8 @@ Imagine a 3-lane road with the ego car at 'E' and other cars at 'A', 'B' and 'C'
 |   |   | C |
 |   |   |   |
 ```
-Say, 'A' drive at 70 kmh, B drives at 69 kmh and ego drives at 78 kmh. It often happens, that all cars are close enough that their speeds are taken into account. As the 'A' is ahead AND it drives faster than 'B', the lane 0 gets higher 'quality'y, than 1. The lane 2 is 'free' ahead, BUT it is not "truly free" both ahead and behind because of C, so the planner will assign it a quality value, that is close to 0 and 1. Sometimes (for example if 'C' drives at 78.1 kmh) this quality for lane 2 would be a bit smaller then for lane 0, and the ego car would change to the lane 0.
-Then it will approach to 'A' as close as possible (keeping minimal safety gap). 
+Say, 'A' drive at 70 kmh, B drives at 69 kmh and ego drives at 78 kmh. It often happens, that all cars are close enough that their speeds are taken into account. As the 'A' is ahead AND it drives faster than 'B', the lane 0 gets higher 'quality', than the lane 1. The lane 2 is 'free' ahead, BUT it is not "truly free" (both ahead and behind) because of car 'C', so the planner will assign it a quality value, that is close to the value for lanes 0 and 1. Sometimes (for example, if 'C' drives at 78.1 kmh) this quality for lane 2 would be a bit smaller than for lane 0, and thus the ego car would change to the lane 0.
+Then it will approach to 'A' as close as possible (keeping a minimal safety gap):
 ```
  0   1   2
 |   |   |   |
@@ -141,7 +141,7 @@ Then it will approach to 'A' as close as possible (keeping minimal safety gap).
 |   |   | C |
 |   |   |   |
 ```
-If now A and B drive both at 70 or 69 kmh, the ego car would stuck in this trap forever, never changing to lane 2 even after C disappear.
+If now A and B drive both at 70 or 69 kmh, the ego car would stuck in this "trap" forever, never changing to lane 2, even after C disappears.
 The correct solution here would be to monitor all three lanes, not only the adjacent ones, but such an approach would bloat the complexity of the cost functions and the decision maker.
 Luckily, such traps in the simulator (and much more in real life) would change their configuration over time, and eventually become somehting like:
 ```
@@ -158,4 +158,7 @@ Luckily, such traps in the simulator (and much more in real life) would change t
 ```
 And the ego car would immediately go to lane 1, (as it is a 'preferred' lane), and then, in a couple of seconds, into lane 2, as it is free now. I have observed such "trapping" several times, and just tweaking the existing cost functions can not beat this problem. However, the planner still fullfills the safety requirements and the ego car eventually gets out of such traps, so I believe this is not a showstopper.
 
+## Conclusions
+
+The path planning algorithm, declared in the `Planner` class, performs a trajectory planning. The resulting trajectory avoids collisions, adheres to the speed limit and maintains comfort lateral and longitudinal acceleration. Lane selection is made basing on an ensemble of cost functions. The code is relatively simple and well-readable, but the algorithm has some limitations because of that simplicity.
 
