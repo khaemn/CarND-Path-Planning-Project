@@ -68,6 +68,7 @@ the path has processed since last time.
 ## Planning algorithm
 
 The algorithm detailed description is in the [Writeup.md](./WRITEUP.md) file.
+An example video of the algorithm work can be found [here](https://youtu.be/FicupkoOgN8)
 
 ---
 

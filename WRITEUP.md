@@ -1,7 +1,7 @@
 # CarND-Path-Planning-Project Model Documentation
 Self-Driving Car Engineer Nanodegree Program
 [![Udacity - Self-Driving Car NanoDegree](https://s3.amazonaws.com/udacity-sdc/github/shield-carnd.svg)](http://www.udacity.com/drive)
-
+An example video of the algorithm work can be found [here](https://youtu.be/FicupkoOgN8)
 
 Overview
 ---
